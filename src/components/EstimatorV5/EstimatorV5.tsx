@@ -655,39 +655,51 @@ export default function EstimatorV5() {
   }, [pricing]);
 
   // 初回ロード
-  useEffect(() => {
-    const ac = new AbortController();
-    loadPricingJSON(ac.signal).then((data) => {
-  const merged = deepMerge(DEFAULT_PRICING_V5, data);
+useEffect(() => {
+  const ac = new AbortController();
+  loadPricingJSON(ac.signal)
+    .then((data) => {
+      const merged = deepMerge(DEFAULT_PRICING_V5, data);
 
-  // スキーマ警告（許容はするが気づけるように）
-  if (merged?.schemaVersion !== 5) {
-    console.warn(
-      `[pricing] schemaVersion is ${merged?.schemaVersion} (expected 5). Falling back to compatibility mode.`
-    );
-  }
+      // スキーマ警告（許容はするが気づけるように）
+      if (merged?.schemaVersion !== 5) {
+        console.warn(
+          `[pricing] schemaVersion is ${merged?.schemaVersion} (expected 5). Falling back to compatibility mode.`
+        );
+      }
 
-  setPricing(merged);
-  setSource(data === DEFAULT_PRICING_V5 ? "default" : "json");
-});
-    return () => ac.abort();
-  }, []);
-// 初回ロード時に ui.defaults があれば初期値を上書き
-const d = merged?.ui?.defaults || {};
-if (d.month) setMonth(String(d.month));
-if (d.weekdayWeekend) setWeekdayWeekend(d.weekdayWeekend);
-if (d.genre) setGenre(d.genre);
-if (d.support) setSupport(d.support);
-if (d.costume) setCostume(d.costume);
-if (typeof d.showAteOne === "boolean") setShowAteOne(d.showAteOne);
+      // 設定適用
+      setPricing(merged);
+      setSource(data === DEFAULT_PRICING_V5 ? "default" : "json");
+
+      // ★ ui.defaults があれば初期値を上書き（ここでやる）
+      const d = merged?.ui?.defaults || {};
+      if (d.month != null) setMonth(String(d.month));
+      if (d.weekdayWeekend === "weekday" || d.weekdayWeekend === "weekend")
+        setWeekdayWeekend(d.weekdayWeekend);
+      if (typeof d.genre === "string") setGenre(d.genre);
+      if (d.support === "A" || d.support === "B" || d.support === "C") setSupport(d.support);
+      if (d.costume === "bring" || d.costume === "inStore" || d.costume === "partner")
+        setCostume(d.costume);
+      if (typeof d.showAteOne === "boolean") setShowAteOne(d.showAteOne);
+    })
+    .catch((e) => {
+      console.warn("[pricing] load failed; using default", e);
+      setPricing(DEFAULT_PRICING_V5);
+      setSource("default");
+    });
+
+  return () => ac.abort();
+}, []);
+
   // この先（Part 2〜）：選択肢生成・バリデーション・計算・UI描画を実装
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6" style={{ background: colors.bodyBg, color: colors.text }}>
       <h2 className="text-2xl md:text-3xl font-bold">{CP.titles.widgetHeading}</h2>
-      <p className="mt-1 text-sm md:text-base" style={{ color: mutedColor }}>
+      <p className="mt-1 text-sm md:text-base" style={{ color: colors.muted }}>
         {CP.titles.intro}
       </p>
-      <div className="mt-4 text-xs" style={{ color: mutedColor }}>
+      <div className="mt-4 text-xs" style={{ color: colors.muted }}>
         <span className="inline-block px-2 py-1 rounded" style={{ background: "#f3f4f6" }}>
           {CP.labels.adminSource}{source}
         </span>
