@@ -326,19 +326,25 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
   lineUrl:"https://lin.ee/0gs9tlY",
 };
 
-/* ========== JSON ロード ========== */
+/* ========== JSON ロード（SSR安全） ========== */
 async function loadPricingJSON(signal: AbortSignal): Promise<SchemaV5> {
   try {
+    // ここが重要：デフォルトは V5 JSON
     let url = "/ate-pricingV5.json";
+
+    // ?pricing= で上書きできる（例：/?pricing=/alt.json や /?pricing=https://...）
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search).get("pricing");
       if (p) url = p;
+      console.log("[pricing] fetch URL:", url);
     }
+
     const res = await fetch(url, { signal, cache: "no-store" });
     if (!res.ok) throw new Error("fetch failed: " + res.status);
     const data = await res.json();
-    if (!data || typeof data !== "object") throw new Error("invalid json");
-    if (Object.keys(data || {}).length === 0) { console.warn("[pricing] empty json"); throw new Error("empty json"); }
+    if (!data || typeof data !== "object" || Object.keys(data).length === 0) {
+      throw new Error("invalid/empty json");
+    }
     return data;
   } catch (e) {
     console.warn("[pricing] fallback to DEFAULT_PRICING_V5", e);
