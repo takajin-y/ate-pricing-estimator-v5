@@ -1,5 +1,5 @@
 // src/components/EstimatorV5/EstimatorV5.tsx
-// Part 1/9 - Header, Types, Fallbacks, JSON loader, State definitions only
+// Part 1–3 完成版（Header, Types, Fallbacks, JSON loader, State + 画面ステップ1〜4まで）
 // @ts-nocheck
 "use client";
 
@@ -15,7 +15,7 @@ import React, { useEffect, useMemo, useState } from "react";
  * - DeepLink（plainモード）で選択内容を予約フォームへ連携
  * - 見積もり表示は「確認ボタン押下」でのみ（触れたら常にリセット＝——）
  *
- * このPartでは：型・フェイルセーフ・ローダ・初期状態を用意します
+ * このファイルは Part1〜3 を統合した作業用安定版です。
  */
 
 /* ========== ユーティリティ ========== */
@@ -54,7 +54,7 @@ type UITheme = {
 type UIConfig = {
   theme: UITheme;
   breakdown: { defaultOpen: boolean };
-  calcMode: { requireEstimateConfirm: boolean; confirmButtonId: string }; // "estimateNow"
+  calcMode: { requireEstimateConfirm: boolean; confirmButtonId: string };
   // 追加：初期値の外部化（存在すれば優先）
   defaults?: Partial<{
     month: string;
@@ -148,17 +148,13 @@ type Costumes = {
   inStore: { label: string; price: number };
   partner: {
     label: string;
-    // 主役のジャンル→提携カテゴリ
     rentalCategoryByGenre: Record<string, string[]>;
-    // 性別別の表示名（ハーフ専用カテゴリは性別別ラベルをここで定義）
     categoryDisplayNames?: Record<
       string,
       | string
       | { ["half-girl"]?: string; ["half-boy"]?: string; [k: string]: string | undefined }
     >;
-    // 家族衣装の性別→許可カテゴリ
     familyGenderCategoryMap?: { female: string[]; male: string[] };
-    // 提携レンタル価格表（ランク→金額）
     rentalPrices: Record<string, Record<string, number>>;
   };
 };
@@ -171,23 +167,20 @@ type ImagesConfig = {
 type PlanBadges = Record<string, string>;
 type OptionDiscountBlurb = Record<string, string>;
 
-// Wedding 専用設定
 type WeddingConfig = {
   enabled: boolean;
   expectedPhotos: number;
   minutesPerPhoto: number;
   costPerMinute: number;
-  contentsExpectedCounts?: Record<string, number>; // 例：{ "panelS":2, "panelM":3, "bookM10":20 }
+  contentsExpectedCounts?: Record<string, number>;
 };
 
-// ジャンル別のプラン置き換え/非表示設定（Newborn 等）
 type GenrePlanOverride = {
-  // プラン表示は既存のキー構成を維持しつつ、名前/バッジ/注記/画像/基礎料金を上書き可能
   planOverrides?: Record<
     string,
-    Partial<PlanMeta> & { baseFeeOverride?: number } // baseFeeOverride で価格置換
+    Partial<PlanMeta> & { baseFeeOverride?: number }
   >;
-  hidePlanKeys?: string[]; // 正規表現文字列も許容（"legacy.*" 等）…実装側でマッチ評価
+  hidePlanKeys?: string[]; // 正規表現文字列を許容（実装側で評価）
 };
 
 type SchemaV5 = {
@@ -221,11 +214,9 @@ type SchemaV5 = {
   lpLinks?: Record<string, string>;
   images?: ImagesConfig;
 
-  // Wedding / Newborn 拡張
   wedding?: WeddingConfig;
   genrePlanOverrides?: Record<string, GenrePlanOverride>;
 
-  // 予約導線（従来の lineUrl の代替。未設定時は従来 lineUrl を使ってもOK）
   reserveUrl?: string;
   lineUrl?: string; // 後方互換
 };
@@ -332,7 +323,7 @@ const FALLBACK_COPY: CopyPack = {
   },
 };
 
-// 後方互換のため schemaVersion:4 を継承しつつ、V5拡張を含む
+// 後方互換のため schemaVersion:4 を許容しつつ、初期値は 5
 const DEFAULT_PRICING_V5: SchemaV5 = {
   schemaVersion: 5,
   colors: {
@@ -495,6 +486,7 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
         "753_7_yotsumi": "七五三7歳（四つ身）",
         seijin_female_furisode: "成人女性（振袖）",
         seijin_male_hakama: "成人男性（羽織袴）",
+        // ハーフ専用カテゴリ（男女共通キーだが性別別ラベルを上書き表示）
         half_furisode_hakama: {
           "half-girl": "女児ハーフ成人ジュニア着物（袴/振袖）",
           "half-boy":  "男児ハーフ成人ジュニア着物（袴）"
@@ -505,7 +497,6 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
         male:   ["adult_male_ensemble"]
       },
       rentalPrices: {
-        // 既存の価格表（省略なく記載）…ユーザー提供JSONと一致
         "omiya_ubugi": { "A": 5900, "B": 7400, "C": 8400, "D": 11400, "E": 14900, "F": 19400, "G": 29400, "H": 35900, "I": 43900 },
         "adult_female_homon": { "A": 14900, "B": 22400, "C": 29400, "D": 35900, "E": 43900 },
         "adult_male_ensemble": { "A": 22400, "B": 29400 },
@@ -516,7 +507,6 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
         "753_7_yotsumi": { "A": 8900, "B": 9900, "C": 11900, "D": 12900, "E": 14900, "F": 16900, "G": 18900, "H": 21900, "I": 24900, "J": 33900, "K": 36900, "L": 40900, "M": 49900, "N": 57900, "O": 64900, "P": 83900 },
         "seijin_female_furisode": { "A": 16900, "B": 21900, "C": 24900, "D": 29900, "E": 33900, "F": 40900, "G": 49900, "H": 57900, "I": 66900 },
         "seijin_male_hakama": { "A": 16900, "B": 24900, "C": 33900, "D": 40900, "E": 49900, "F": 83900, "G": 101900, "H": 129900, "I": 166900 },
-        // ハーフ専用カテゴリ（男女共通キー）
         "half_furisode_hakama": { "A": 16900, "B": 21900, "C": 24900, "D": 29900, "E": 33900, "F": 40900, "G": 49900 }
       }
     }
@@ -531,23 +521,16 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
     contentsExpectedCounts: { panelS: 2, panelM: 3, bookM10: 20 }
   },
   genrePlanOverrides: {
-    // newborn: ここで既存プラン構造を維持しつつ内容/価格を後から上書きできる
-    // 例）
-    // newborn: {
-    //   planOverrides: {
-    //     "ateOne": { name: "ニューボーン｜アテワン", badge: "新生児専用", note: "安全配慮＋セレクト納品（最大30枚）", baseFeeOverride: 18000 },
-    //     "ateCollection": { name: "ニューボーン｜アテコレ", badge: "新生児専用", note: "セレクト納品（最大50枚）", baseFeeOverride: 32000 },
-    //   }
-    // }
+    // newborn: { planOverrides: { ... } } を後でJSON側から自由に差し替え
   },
   reserveUrl: "https://studio-ate.jp/reserve",
-  lineUrl: "https://lin.ee/0gs9tlY" // 後方互換
+  lineUrl: "https://lin.ee/0gs9tlY"
 };
 
 /* ========== JSON ロード（SSR安全） ========== */
 async function loadPricingJSON(signal: AbortSignal): Promise<SchemaV5> {
   try {
-    let url = "/ate-pricingV5.json";
+    let url = "/ate-pricingV5.json"; // ← V4 ではなく V5 を既定に
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search).get("pricing");
       if (p) url = p;
@@ -556,13 +539,11 @@ async function loadPricingJSON(signal: AbortSignal): Promise<SchemaV5> {
     if (!res.ok) throw new Error("fetch failed: " + res.status);
     const data = await res.json();
     if (!data || typeof data !== "object") throw new Error("invalid json");
-    // 型は緩やかに受け、deepMergeで後方互換を担保
-    // 最低限の健全性チェック（空オブジェクトはNG扱い）
-if (Object.keys(data || {}).length === 0) {
-  console.warn("[pricing] empty JSON object received. Using DEFAULT_PRICING_V5 fallback.");
-  throw new Error("empty json");
-}
-return data;
+    if (Object.keys(data || {}).length === 0) {
+      console.warn("[pricing] empty JSON object received. Using DEFAULT_PRICING_V5 fallback.");
+      throw new Error("empty json");
+    }
+    return data;
   } catch (e) {
     console.warn("[pricing] fallback to DEFAULT_PRICING_V5", e);
     return DEFAULT_PRICING_V5;
@@ -592,7 +573,7 @@ function deepMerge(base: any, src: any) {
   return src !== undefined ? src : base;
 }
 
-/* ========== メイン（このPartは状態定義まで） ========== */
+/* ========== メイン（Part1: 状態定義 / Part2–3: UI・バリデーション） ========== */
 export default function EstimatorV5() {
   // 設定ロード
   const [pricing, setPricing] = useState<SchemaV5>(DEFAULT_PRICING_V5);
@@ -645,6 +626,7 @@ export default function EstimatorV5() {
 
   // テーマ（CSS変数用）
   const colors = useMemo(() => ({ ...DEFAULT_THEME, ...(pricing.colors || {}) }), [pricing]);
+  const mutedColor = colors.muted;
   const CP = useMemo<CopyPack>(() => {
     const src = pricing.copy || FALLBACK_COPY;
     return {
@@ -655,46 +637,156 @@ export default function EstimatorV5() {
   }, [pricing]);
 
   // 初回ロード
-useEffect(() => {
-  const ac = new AbortController();
-  loadPricingJSON(ac.signal)
-    .then((data) => {
-      const merged = deepMerge(DEFAULT_PRICING_V5, data);
+  useEffect(() => {
+    const ac = new AbortController();
+    loadPricingJSON(ac.signal)
+      .then((data) => {
+        const merged = deepMerge(DEFAULT_PRICING_V5, data);
 
-      // スキーマ警告（許容はするが気づけるように）
-      if (merged?.schemaVersion !== 5) {
-        console.warn(
-          `[pricing] schemaVersion is ${merged?.schemaVersion} (expected 5). Falling back to compatibility mode.`
-        );
+        // スキーマ注意（許容）
+        if (merged?.schemaVersion !== 5) {
+          console.warn(`[pricing] schemaVersion is ${merged?.schemaVersion} (expected 5). Compatibility mode.`);
+        }
+
+        setPricing(merged);
+        setSource(data === DEFAULT_PRICING_V5 ? "default" : "json");
+
+        // ui.defaults を初期値に反映
+        const d = merged?.ui?.defaults || {};
+        if (d.month != null) setMonth(String(d.month));
+        if (d.weekdayWeekend === "weekday" || d.weekdayWeekend === "weekend") setWeekdayWeekend(d.weekdayWeekend);
+        if (typeof d.genre === "string") setGenre(d.genre);
+        if (d.support === "A" || d.support === "B" || d.support === "C") setSupport(d.support);
+        if (d.costume === "bring" || d.costume === "inStore" || d.costume === "partner") setCostume(d.costume);
+        if (typeof d.showAteOne === "boolean") setShowAteOne(d.showAteOne);
+      })
+      .catch((e) => {
+        console.warn("[pricing] load failed; using default", e);
+        setPricing(DEFAULT_PRICING_V5);
+        setSource("default");
+      });
+    return () => ac.abort();
+  }, []);
+
+  /* ========== Part 2: 派生状態・ユーティリティ・バリデーション ========== */
+
+  // 繁忙期かどうか
+  const isBusyMonth = useMemo(() => {
+    const m = Number(month);
+    return Array.isArray(pricing?.delivery?.busyMonths) && pricing.delivery.busyMonths.includes(m);
+  }, [month, pricing]);
+
+  // 即日/翌営業日の可否（表示はグレーアウトで、非表示にはしない）
+  const sameDayAllowed = useMemo(() => {
+    if (isBusyMonth && weekdayWeekend === "weekend") return false;
+    return true;
+  }, [isBusyMonth, weekdayWeekend]);
+
+  const rushNextDayAllowed = useMemo(() => {
+    return isBusyMonth && weekdayWeekend === "weekend";
+  }, [isBusyMonth, weekdayWeekend]);
+
+  // 主役衣装の「選択肢」可否（Half/Adult は inStore を出さない）
+  const allowInStore = useMemo(() => {
+    const g = genre;
+    if (g === "half-girl" || g === "half-boy" || g === "adult-female" || g === "adult-male") return false;
+    return true;
+  }, [genre]);
+
+  // supportA の場合は持ち込み強制（JSONのルールに従う）
+  useEffect(() => {
+    if (pricing?.calcRules?.supportAForcesBring && support === "A") {
+      if (costume !== "bring") setCostume("bring");
+    }
+  }, [support, pricing, costume]);
+
+  // パートナー衣装のカテゴリリスト（ジャンル別）
+  const partnerCategoriesForGenre = useMemo(() => {
+    const all = pricing?.costumes?.partner?.rentalCategoryByGenre || {};
+    return all[genre] || [];
+  }, [pricing, genre]);
+
+  // カテゴリの表示名（ハーフは性別別ラベルあり）
+  const displayCategoryName = (catKey: string) => {
+    const map = pricing?.costumes?.partner?.categoryDisplayNames || {};
+    const label = map[catKey];
+    if (!label) return catKey;
+    if (typeof label === "string") return label;
+    const sexKey = genre === "half-girl" ? "half-girl" : genre === "half-boy" ? "half-boy" : undefined;
+    if (sexKey && typeof label === "object") return label[sexKey] || catKey;
+    return catKey;
+  };
+
+  // ランク一覧（カテゴリ→価格表のキー）
+  const ranksForCategory = (catKey: string) => {
+    const table = pricing?.costumes?.partner?.rentalPrices || {};
+    const record = table[catKey] || {};
+    return Object.keys(record); // ["A","B",...]
+  };
+
+  // 家族衣装の性別→許可カテゴリ
+  const familyMap = pricing?.costumes?.partner?.familyGenderCategoryMap || {
+    female: ["adult_female_homon", "adult_female_kurotome"],
+    male: ["adult_male_ensemble"],
+  };
+
+  // 何かを操作したら見積もりリセット（＝「——」に戻す）
+  const touch = () => {
+    if (estimated) setEstimated(false);
+    if (validationMsg) setValidationMsg("");
+  };
+
+  // バリデーション（最低限）
+  const validateBeforeEstimate = () => {
+    if (costume === "partner") {
+      if (!partnerCategory) return setValidationMsg(pricing?.missingHints?.partnerCategory || "提携衣装のジャンルを選んでください。"), false;
+      if (!partnerRank) return setValidationMsg(pricing?.missingHints?.partnerRank || "提携衣装のランクを選んでください。"), false;
+    }
+    setValidationMsg("");
+    return true;
+  };
+
+  // 見積り実行（計算は Part 4 以降）
+  const onEstimateNow = () => {
+    if (!validateBeforeEstimate()) return;
+    setEstimated(true);
+  };
+
+  // DeepLink（plainモード）…Part 8で完成予定（ここではURLパラメータ組み立て器だけ）
+  const buildQuoteQuery = () => {
+    const cfg = pricing?.deepLink;
+    if (!cfg || cfg.mode !== "plain") return "";
+    const payload: any = {};
+    for (const key of cfg.includeKeys || []) {
+      switch (key) {
+        case "plan": break; // Part 5 で選択されたプランを詰める
+        case "genre": payload.genre = genre; break;
+        case "support": payload.support = support; break;
+        case "costume": payload.costume = costume; break;
+        case "partnerCategory": payload.partnerCategory = partnerCategory; break;
+        case "partnerRank": payload.partnerRank = partnerRank; break;
+        case "month": payload.month = month; break;
+        case "weekdayWeekend": payload.weekdayWeekend = weekdayWeekend; break;
+        case "sameDayData": payload.sameDayData = sameDayData; break;
+        case "rushNextDay": payload.rushNextDay = rushNextDay; break;
+        case "locationAddOn": payload.locationAddOn = locationAddOn; break;
+        case "sibling753": payload.sibling753 = sibling753; break;
+        case "visitRental": payload.visitRental = visitRental; break;
+        case "extras": payload.extras = extras; break;
+        case "familyOutfits": payload.familyOutfits = familyOutfits; break;
+        case "micro": payload.micro = { nihongami: optNihongami, hairChange: optHairChange, western: optWesternWear }; break;
+        case "westernAddOn": payload.westernAddOn = optWesternWear; break;
+        default: break;
       }
+    }
+    const q = new URLSearchParams({ [cfg.queryParam || "quote"]: JSON.stringify(payload) });
+    return q.toString(); // 例： "quote=%7B...%7D"
+  };
 
-      // 設定適用
-      setPricing(merged);
-      setSource(data === DEFAULT_PRICING_V5 ? "default" : "json");
-
-      // ★ ui.defaults があれば初期値を上書き（ここでやる）
-      const d = merged?.ui?.defaults || {};
-      if (d.month != null) setMonth(String(d.month));
-      if (d.weekdayWeekend === "weekday" || d.weekdayWeekend === "weekend")
-        setWeekdayWeekend(d.weekdayWeekend);
-      if (typeof d.genre === "string") setGenre(d.genre);
-      if (d.support === "A" || d.support === "B" || d.support === "C") setSupport(d.support);
-      if (d.costume === "bring" || d.costume === "inStore" || d.costume === "partner")
-        setCostume(d.costume);
-      if (typeof d.showAteOne === "boolean") setShowAteOne(d.showAteOne);
-    })
-    .catch((e) => {
-      console.warn("[pricing] load failed; using default", e);
-      setPricing(DEFAULT_PRICING_V5);
-      setSource("default");
-    });
-
-  return () => ac.abort();
-}, []);
-
-  // この先（Part 2〜）：選択肢生成・バリデーション・計算・UI描画を実装
+  /* ========== Part 3: 画面（ステップ1〜4 + 見積ボタン + ダミー結果） ========== */
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6" style={{ background: colors.bodyBg, color: colors.text }}>
+      {/* ヘッダー */}
       <h2 className="text-2xl md:text-3xl font-bold">{CP.titles.widgetHeading}</h2>
       <p className="mt-1 text-sm md:text-base" style={{ color: colors.muted }}>
         {CP.titles.intro}
@@ -705,7 +797,312 @@ useEffect(() => {
         </span>
       </div>
 
-      {/* Part 2 以降でステップUIや計算UIを追加します */}
+      {/* ステップ1：撮影日 */}
+      <div className="mt-6 p-4 rounded-2xl border" style={{ borderColor: colors.border, background: "#fff" }}>
+        <h3 className="font-semibold text-lg">{CP.titles.stepDate}</h3>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm mb-1" style={{ color: mutedColor }}>撮影月</label>
+            <select
+              className="w-full rounded-xl border p-2"
+              style={{ borderColor: colors.border }}
+              value={month}
+              onChange={(e) => { setMonth(e.target.value); touch(); }}
+            >
+              {Array.from({ length: 12 }).map((_, i) => {
+                const m = String(i + 1);
+                return <option key={m} value={m}>{m}月</option>;
+              })}
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm mb-1" style={{ color: mutedColor }}>曜日区分</label>
+            <div className="flex gap-3">
+              {(["weekday", "weekend"] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => { setWeekdayWeekend(k); touch(); }}
+                  className={`px-3 py-2 rounded-xl border ${weekdayWeekend === k ? "ring-2" : ""}`}
+                  style={{
+                    borderColor: colors.border,
+                    background: weekdayWeekend === k ? colors.badgeBg : "#fff",
+                    color: colors.text,
+                    boxShadow: weekdayWeekend === k ? `0 0 0 2px ${colors.ring}` : "none",
+                  }}
+                  type="button"
+                >
+                  {k === "weekday" ? CP.labels.weekday : CP.labels.weekend}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 text-xs" style={{ color: mutedColor }}>
+              繁忙期：{(pricing?.delivery?.busyMonths || []).join("・")}月／現在は {isBusyMonth ? "繁忙期" : "通常期"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ステップ2：ジャンル */}
+      <div className="mt-6 p-4 rounded-2xl border" style={{ borderColor: colors.border, background: "#fff" }}>
+        <h3 className="font-semibold text-lg">{CP.titles.stepGenre}</h3>
+        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+          {Object.entries(pricing.genreAddons || {}).map(([k, v]) => (
+            <button
+              key={k}
+              onClick={() => {
+                setGenre(k);
+                // 選択変更の副作用
+                setPartnerCategory(null);
+                setPartnerRank(null);
+                touch();
+              }}
+              className={`px-3 py-2 rounded-xl border text-left ${genre === k ? "ring-2" : ""}`}
+              style={{
+                borderColor: colors.border,
+                background: genre === k ? colors.badgeBg : "#fff",
+                boxShadow: genre === k ? `0 0 0 2px ${colors.ring}` : "none",
+              }}
+              type="button"
+              title={v?.label || k}
+            >
+              <div className="font-medium">{v?.label || k}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ステップ3：お支度（サポート） */}
+      <div className="mt-6 p-4 rounded-2xl border" style={{ borderColor: colors.border, background: "#fff" }}>
+        <h3 className="font-semibold text-lg">{CP.titles.stepSupport}</h3>
+        <div className="mt-3 flex flex-wrap gap-3">
+          {(["A","B","C"] as const).map((k) => {
+            const titleMap: any = { A: CP.labels.supportA, B: CP.labels.supportB, C: CP.labels.supportC };
+            const helpMap: any  = { A: CP.labels.supportAHelp, B: CP.labels.supportBHelp, C: CP.labels.supportCHelp };
+            return (
+              <button
+                key={k}
+                onClick={() => { setSupport(k); touch(); }}
+                className={`px-3 py-2 rounded-xl border text-left ${support === k ? "ring-2" : ""}`}
+                style={{
+                  borderColor: colors.border,
+                  background: support === k ? colors.badgeBg : "#fff",
+                  boxShadow: support === k ? `0 0 0 2px ${colors.ring}` : "none",
+                }}
+                type="button"
+                title={helpMap[k]}
+              >
+                <div className="font-medium">{titleMap[k]}</div>
+                <div className="text-xs" style={{ color: mutedColor }}>{helpMap[k]}</div>
+              </button>
+            );
+          })}
+        </div>
+        {pricing?.calcRules?.supportAForcesBring && support === "A" && (
+          <div className="mt-2 text-xs" style={{ color: mutedColor }}>
+            ※ {CP.labels.supportA} 選択時は主役衣装が自動的に「{CP.labels.costumeBring}」になります。
+          </div>
+        )}
+      </div>
+
+      {/* ステップ4：主役の衣装 */}
+      <div className="mt-6 p-4 rounded-2xl border" style={{ borderColor: colors.border, background: "#fff" }}>
+        <h3 className="font-semibold text-lg">{CP.titles.stepCostume}</h3>
+
+        {/* 衣装ソース（持ち込み / 店内 / 提携） */}
+        <div className="mt-3 flex flex-wrap gap-3">
+          {/* bring */}
+          <button
+            onClick={() => { setCostume("bring"); touch(); }}
+            className={`px-3 py-2 rounded-xl border ${costume === "bring" ? "ring-2" : ""}`}
+            style={{
+              borderColor: colors.border,
+              background: costume === "bring" ? colors.badgeBg : "#fff",
+              boxShadow: costume === "bring" ? `0 0 0 2px ${colors.ring}` : "none",
+            }}
+            type="button"
+          >
+            {CP.labels.costumeBring}
+          </button>
+
+          {/* inStore（Half/Adultでは選択不可。Aでも不可） */}
+          <button
+            onClick={() => { if (allowInStore && support !== "A") { setCostume("inStore"); touch(); } }}
+            disabled={!allowInStore || support === "A"}
+            className={`px-3 py-2 rounded-xl border ${costume === "inStore" ? "ring-2" : ""} ${(!allowInStore || support === "A") ? "opacity-50 cursor-not-allowed" : ""}`}
+            style={{
+              borderColor: colors.border,
+              background: costume === "inStore" ? colors.badgeBg : "#fff",
+              boxShadow: costume === "inStore" ? `0 0 0 2px ${colors.ring}` : "none",
+            }}
+            type="button"
+            title={!allowInStore ? "このジャンルでは店内衣装は選べません" : (support === "A" ? "仕上がり来店では店内衣装は選べません" : "")}
+          >
+            {CP.labels.costumeInStore}
+          </button>
+
+          {/* partner */}
+          <button
+            onClick={() => { if (support !== "A") { setCostume("partner"); touch(); } }}
+            disabled={support === "A"}
+            className={`px-3 py-2 rounded-xl border ${costume === "partner" ? "ring-2" : ""} ${(support === "A") ? "opacity-50 cursor-not-allowed" : ""}`}
+            style={{
+              borderColor: colors.border,
+              background: costume === "partner" ? colors.badgeBg : "#fff",
+              boxShadow: costume === "partner" ? `0 0 0 2px ${colors.ring}` : "none",
+            }}
+            type="button"
+          >
+            {CP.labels.costumePartner}
+          </button>
+        </div>
+
+        {/* 提携衣装のカテゴリ/ランク（partner選択時のみ表示） */}
+        {costume === "partner" && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm mb-1" style={{ color: mutedColor }}>{CP.labels.partnerPickCategory}</div>
+              <select
+                className="w-full rounded-xl border p-2"
+                style={{ borderColor: colors.border }}
+                value={partnerCategory || ""}
+                onChange={(e) => { setPartnerCategory(e.target.value || null); setPartnerRank(null); touch(); }}
+              >
+                <option value="">{CP.missingHints.partnerCategory}</option>
+                {partnerCategoriesForGenre.map((k) => (
+                  <option key={k} value={k}>{displayCategoryName(k)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div className="text-sm mb-1 flex items-center gap-2" style={{ color: mutedColor }}>
+                <span>{CP.labels.partnerPickRank}</span>
+                <span className="text-xs">{CP.labels.partnerRankNote}</span>
+              </div>
+              <select
+                className="w-full rounded-xl border p-2"
+                style={{ borderColor: colors.border }}
+                value={partnerRank || ""}
+                onChange={(e) => { setPartnerRank(e.target.value || null); touch(); }}
+                disabled={!partnerCategory}
+              >
+                <option value="">{CP.missingHints.partnerRank}</option>
+                {(partnerCategory ? ranksForCategory(partnerCategory) : []).map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                    {(() => {
+                      const ptable = pricing?.costumes?.partner?.rentalPrices || {};
+                      const price = ptable?.[partnerCategory || ""]?.[r];
+                      return typeof price === "number" ? `（${currency(price)}）` : "";
+                    })()}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* データ納品（グレーアウト制御のみ・非表示にはしない） */}
+      <div className="mt-6 p-4 rounded-2xl border" style={{ borderColor: colors.border, background: "#fff" }}>
+        <h3 className="font-semibold text-lg">データ納品</h3>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* 即日 */}
+          <label className={`flex items-start gap-2 p-3 rounded-xl border ${!sameDayAllowed ? "opacity-50" : ""}`}
+                 style={{ borderColor: colors.border }}>
+            <input
+              type="checkbox"
+              checked={sameDayData}
+              onChange={() => { setSameDayData(!sameDayData); touch(); }}
+              disabled={!sameDayAllowed}
+              className="mt-1"
+            />
+            <div>
+              <div className="font-medium">{t(CP.labels.sameDay, { price: currency(pricing?.delivery?.sameDayPrice || 0) })}</div>
+              <div className="text-xs" style={{ color: mutedColor }}>
+                {CP.labels.sameDayNoteBusy} {CP.labels.sameDayNoteAteOne}
+              </div>
+            </div>
+          </label>
+
+          {/* 翌営業日（繁忙期土日祝専用） */}
+          <label className={`flex items-start gap-2 p-3 rounded-xl border ${!rushNextDayAllowed ? "opacity-50" : ""}`}
+                 style={{ borderColor: colors.border }}>
+            <input
+              type="checkbox"
+              checked={rushNextDay}
+              onChange={() => { setRushNextDay(!rushNextDay); touch(); }}
+              disabled={!rushNextDayAllowed}
+              className="mt-1"
+            />
+            <div>
+              <div className="font-medium">{t(CP.labels.rush, { price: currency(pricing?.delivery?.rushPrice || 0) })}</div>
+              <div className="text-xs" style={{ color: mutedColor }}>
+                ※ 繁忙期の土日祝のみ選択可能
+              </div>
+            </div>
+          </label>
+        </div>
+
+        {/* レガシー無料訴求 */}
+        <div className="mt-3 text-xs" style={{ color: mutedColor }}>
+          {CP.labels.legacyFree}
+        </div>
+      </div>
+
+      {/* 見積りアクション */}
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <button
+          id={pricing?.ui?.calcMode?.confirmButtonId || "estimateNow"}
+          onClick={onEstimateNow}
+          className="px-4 py-2 rounded-xl text-white"
+          style={{ background: colors.accent }}
+          type="button"
+        >
+          {CP.buttons.estimateNow}
+        </button>
+        {validationMsg && (
+          <span className="text-sm px-3 py-2 rounded-xl" style={{ background: "#FFF4F2", color: "#B91C1C" }}>
+            {validationMsg}
+          </span>
+        )}
+        {!estimated && (
+          <span className="text-sm" style={{ color: mutedColor }}>
+            ※ いずれかの項目を操作すると表示は「——」に戻ります
+          </span>
+        )}
+      </div>
+
+      {/* ダミーの結果表示（Part 4で計算実装予定） */}
+      <div className="mt-6 p-4 rounded-2xl border" style={{ borderColor: colors.border, background: "#fff" }}>
+        <h3 className="font-semibold text-lg">
+          {CP.titles.simHeading} <span className="text-sm" style={{ color: mutedColor }}>{CP.labels.planTaxNote}</span>
+        </h3>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {pricing.plans.map(p => (
+            <div key={p.key} className="p-4 rounded-xl border" style={{ borderColor: colors.border }}>
+              <div className="flex items-center gap-2">
+                {p.badge && (
+                  <span className="text-xs px-2 py-1 rounded" style={{ background: colors.badgeBg, color: colors.badgeText }}>
+                    {p.badge}
+                  </span>
+                )}
+                <div className="font-semibold">{p.name}</div>
+              </div>
+              <div className="mt-2 text-sm" style={{ color: mutedColor }}>{p.note}</div>
+              <div className="mt-3 text-2xl font-bold">
+                {estimated ? "（ここに計算結果）" : "——"}
+              </div>
+              <div className="mt-1 text-xs" style={{ color: mutedColor }}>
+                {CP.labels.shootTime}: {pricing.durations[p.key]?.shoot || "-"} ／ {CP.labels.stayTime}: {pricing.durations[p.key]?.stay || "-"}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 text-xs" style={{ color: mutedColor }}>
+          {CP.labels.estimateNotice}
+        </div>
+      </div>
     </div>
   );
 }
