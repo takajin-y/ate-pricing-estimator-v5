@@ -1,4 +1,4 @@
-// src/EstimatorV5.tsx
+// src/components/EstimatorV5/EstimatorV5.tsx
 // Part 1–5 統合版（V5計算ロジック + 内訳表示まで完成）
 // @ts-nocheck
 "use client";
@@ -7,22 +7,16 @@ import React, { useEffect, useMemo, useState } from "react";
 
 /**
  * studio ate | 見積りウィジェット V5
- * -------------------------------------------------
- * 目的：
- * - 価格/文言/画像/色/UI挙動/計算ルールを 100% 外部JSONで制御
- * - Newbornの既存カード置き換え・Weddingの単価式をJSON管理
- * - ハーフ成人の専用カテゴリ（男女共通キー・性別別ラベル）に対応
- * - DeepLink（plainモード）で選択内容を予約フォームへ連携
- * - 見積もり表示は「確認ボタン押下」でのみ（触れたら常にリセット＝——）
+ * - 価格/文言/画像/色/UI挙動/計算ルールを外部JSONで制御
+ * - Newborn/Wedding 拡張、ハーフ成人の性別別ラベル
+ * - DeepLink（plain）対応
  */
 
 /* ========== ユーティリティ ========== */
 const currency = (n: number) =>
   new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 })
     .format(Math.round(n || 0));
-
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
 const t = (s: string, vars: Record<string, any> = {}) =>
   (s || "").replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : ""));
 
@@ -38,32 +32,22 @@ type UITheme = {
     action: { bg: string | "accent"; hover: string; text: string };
   };
 };
-
 type UIConfig = {
   theme: UITheme;
   breakdown: { defaultOpen: boolean };
   calcMode: { requireEstimateConfirm: boolean; confirmButtonId: string };
 };
-
 type CopyPack = { titles: Record<string,string>; buttons: Record<string,string>; labels: Record<string,string>; };
 type MissingHints = { weekdayWeekend:string; month:string; genre:string; support:string; costume:string; partnerCategory:string; partnerRank:string; };
-
 type CalcRules = {
   featureRules: { westernAddOnEligibleGenres: string[] };
-  preparedArrival: {
-    enabled: boolean;
-    mode: "flat" | "age-tiered";
-    flatAmount?: number;
-    byGenre?: Record<string, number>;
-    excludedGenres?: string[];
-  };
+  preparedArrival: { enabled:boolean; mode:"flat"|"age-tiered"; flatAmount?:number; byGenre?:Record<string,number>; excludedGenres?:string[]; };
   discountEligibleGenres: string[];
   supportAForcesBring: boolean;
   resetOnGenreChange: { clearFamilyIfHidden:boolean; clearVisitIfNotOmiya:boolean; clearSiblingIfNot753:boolean; resetPartnerIfNotAllowed:boolean; };
   minTotal: number;
 };
-
-type DeepLinkConfig = { reserveFormUrl:string; queryParam:string; includeKeys:string[]; mode?:"plain"; };
+type DeepLinkConfig = { reserveFormUrl:string; queryParam:string; includeKeys:string[]; mode?:"plain" };
 type Delivery = { sameDayPrice:number; rushPrice:number; busyMonths:number[] };
 type Participants = { included:number; extra:{ adultOrHS:number; childU15:number; dog:number }; semiMain:{ person:number; dog:number } };
 type AdultDressing = { dressOnly:number; dressHair:number };
@@ -76,11 +60,10 @@ type PlanMeta = { key:string; name:string; badge?:string; note?:string; image?:s
 type Durations = Record<string,{ shoot:string; stay:string }>;
 type GenreAddonEntry = { label:string; A:number|null; B:number|null; C:number|null };
 type GenreAddons = Record<string, GenreAddonEntry>;
-
 type Costumes = {
-  bring: { label:string; price:number };
-  inStore: { label:string; price:number };
-  partner: {
+  bring:{ label:string; price:number };
+  inStore:{ label:string; price:number };
+  partner:{
     label:string;
     rentalCategoryByGenre: Record<string,string[]>;
     categoryDisplayNames?: Record<string, string | { ["half-girl"]?:string; ["half-boy"]?:string; [k:string]:string|undefined }>;
@@ -88,46 +71,20 @@ type Costumes = {
     rentalPrices: Record<string, Record<string, number>>;
   };
 };
-
 type ImagesConfig = { genres?:Record<string,string>; plans?:Record<string,string> };
 type PlanBadges = Record<string,string>;
 type OptionDiscountBlurb = Record<string,string>;
-
-type WeddingConfig = {
-  enabled:boolean; expectedPhotos:number; minutesPerPhoto:number; costPerMinute:number;
-  contentsExpectedCounts?: Record<string,number>;
-};
-
-type GenrePlanOverride = {
-  planOverrides?: Record<string, Partial<PlanMeta> & { baseFeeOverride?:number }>;
-  hidePlanKeys?: string[];
-};
-
+type WeddingConfig = { enabled:boolean; expectedPhotos:number; minutesPerPhoto:number; costPerMinute:number; contentsExpectedCounts?: Record<string,number> };
+type GenrePlanOverride = { planOverrides?: Record<string, Partial<PlanMeta> & { baseFeeOverride?:number }>; hidePlanKeys?: string[] };
 type SchemaV5 = {
   schemaVersion: 4 | 5;
   colors: { primary:string; primaryHover:string; accent:string; badgeBg:string; badgeText:string; ring:string; border:string; cardBg:string; text:string; muted:string; bodyBg:string; borderActive:string; };
-  ui: UIConfig;
-  copy: CopyPack;
-  missingHints: MissingHints;
-  calcRules: CalcRules;
-  deepLink: DeepLinkConfig;
-  planBadges?: PlanBadges;
-  optionDiscountBlurb?: OptionDiscountBlurb;
-  delivery: Delivery;
-  participants: Participants;
-  adultDressing: AdultDressing;
-  addOns: AddOns;
-  baseFees: BaseFees;
-  plans: PlanMeta[];
-  durations: Durations;
-  genreAddons: GenreAddons;
-  costumes: Costumes;
-  lpLinks?: Record<string,string>;
-  images?: ImagesConfig;
-  wedding?: WeddingConfig;
-  genrePlanOverrides?: Record<string, GenrePlanOverride>;
-  reserveUrl?: string;
-  lineUrl?: string;
+  ui:UIConfig; copy:CopyPack; missingHints:MissingHints; calcRules:CalcRules; deepLink:DeepLinkConfig;
+  planBadges?:PlanBadges; optionDiscountBlurb?:OptionDiscountBlurb;
+  delivery:Delivery; participants:Participants; adultDressing:AdultDressing; addOns:AddOns; baseFees:BaseFees;
+  plans:PlanMeta[]; durations:Durations; genreAddons:GenreAddons; costumes:Costumes;
+  lpLinks?:Record<string,string>; images?:ImagesConfig; wedding?:WeddingConfig; genrePlanOverrides?:Record<string,GenrePlanOverride>;
+  reserveUrl?:string; lineUrl?:string;
 };
 
 /* ========== フェイルセーフ ========== */
@@ -135,59 +92,39 @@ const DEFAULT_THEME = {
   primary:"#74151d", primaryHover:"#623e4c", accent:"#06C755", badgeBg:"#F3E9DD", badgeText:"#7A5C3E",
   ring:"#EADBC8", border:"#E5E7EB", borderActive:"#B68C69", cardBg:"#FFFFFF", text:"#111827", muted:"#6B7280", bodyBg:"#FFFFFF",
 };
-
 const FALLBACK_COPY: CopyPack = {
   titles: {
     widgetHeading: "見積り（V5 / 外部JSON）",
     intro: "撮影日 → ジャンル → サポート → 衣装 → オプションを選び、【この内容で見積もり】を押すと金額が計算されます。",
-    stepDate: "① 撮影日を選ぶ",
-    stepGenre: "② ジャンル/年齢を選ぶ",
-    stepSupport: "③ 主役の着付け/ヘアメイクを選ぶ",
-    stepCostume: "④ 主役の衣装（持ち込み／店内／提携）",
-    simHeading: "料金シミュレーション（プラン別）",
-    familyBlock: "ご家族の衣装を追加（任意）",
-    extrasBlock: "同行者・準主役の追加（任意）",
-    microBlock: "その他オプション（任意）",
+    stepDate: "① 撮影日を選ぶ", stepGenre: "② ジャンル/年齢を選ぶ", stepSupport: "③ 主役の着付け/ヘアメイクを選ぶ", stepCostume: "④ 主役の衣装（持ち込み／店内／提携）",
+    simHeading: "料金シミュレーション（プラン別）", familyBlock: "ご家族の衣装を追加（任意）", extrasBlock: "同行者・準主役の追加（任意）", microBlock: "その他オプション（任意）",
   },
   buttons: { add:"＋ 追加", delete:"削除", reserve:"この内容で予約する", reload:"再読み込み", estimateNow:"この内容で見積もり" },
   labels: {
     weekday:"平日", weekend:"土日祝",
-    supportA:"仕上がり来店（美容なし）", supportAHelp:"お支度済みでご来店 → 割引適用",
-    supportB:"着付け＆ヘアセット込み", supportBHelp:"所要時間が増えます",
-    supportC:"着替えのみ", supportCHelp:"店内でお着替えのみ",
+    supportA:"仕上がり来店（美容なし）", supportAHelp:"お支度済みでご来店 → 割引適用", supportB:"着付け＆ヘアセット込み", supportBHelp:"所要時間が増えます", supportC:"着替えのみ", supportCHelp:"店内でお着替えのみ",
     costumeBring:"持ち込み", costumeInStore:"店内衣装を利用", costumePartner:"提携衣装サイトからレンタル",
     partnerPickCategory:"提携衣装ジャンルを選択", partnerPickRank:"ランクを選択", partnerRankNote:"※ 提携衣装サイトのランク表記に準拠",
     familyGenderFemale:"女性", familyGenderMale:"男性", familySourceBring:"持ち込み", familySourcePartner:"提携衣装サイトからレンタル",
-    familyDressOnly:"着付けのみ（{price}）", familyDressHair:"着付け＆ヘアセット（{price}）",
-    familyPartnerCategory:"衣装ジャンル", familyPartnerRank:"ランク",
+    familyDressOnly:"着付けのみ（{price}）", familyDressHair:"着付け＆ヘアセット（{price}）", familyPartnerCategory:"衣装ジャンル", familyPartnerRank:"ランク",
     familySubtotal:"小計：{price}", familyTotal:"ご家族衣装 合計：{price}",
-    extrasNoteBase:"※ 基本価格には3名（父・母・主役）を含みます。",
-    extraAdult:"同行者（高校生以上）", extraChild:"同行者（中学生以下）", extraDog:"同行者（ペット（わんちゃん等））",
+    extrasNoteBase:"※ 基本価格には3名（父・母・主役）を含みます。", extraAdult:"同行者（高校生以上）", extraChild:"同行者（中学生以下）", extraDog:"同行者（ペット（わんちゃん等））",
     semiPerson:"準主役（一人写し・1ポーズ）", semiDog:"準主役（ペット・1ポーズ）",
     showAteOne:"初回利用または家族写真または男性成人（アテワンを表示）",
     sameDay:"即日データ納品希望（{price}）", sameDayNoteBusy:"（繁忙期の土日祝は不可）", sameDayNoteAteOne:"（アテワン対象外）",
     rush:"翌営業日データ納品希望（繁忙期土日祝専用・{price}）",
     legacyFree:"レガシープラン限定特典・即日データ納品無料（繁忙期は平日のみ適用可能）",
-    location:"ロケ撮影追加(松原神社)（+{price}）",
-    visit753:"当日お参りお出かけレンタル（+{price}）",
-    visitOmiya:"お参りレンタル（提携衣装レンタル時のみ／産着 +{baby}・大人1名 +{adult}）",
-    sibling753:"七五三 きょうだいプラン（+{price}）",
-    nihongami:"日本髪（+{price}）",
-    hairChange:"ヘアチェンジ（+{price}）",
-    westernAddOn:"洋装追加オプション（{price}〜）",
-    planTaxNote:"（税込・目安）",
-    shootTime:"撮影時間", stayTime:"店舗滞在時間",
-    breakdownTitle:"料金内訳（選択内容つき）",
-    breakdownBase:"プラン料金", breakdownGenre:"ジャンル別加算", breakdownCostume:"衣装（主役）",
+    location:"ロケ撮影追加(松原神社)（+{price}）", visit753:"当日お参りお出かけレンタル（+{price}）",
+    visitOmiya:"お参りレンタル（提携衣装レンタル時のみ／産着 +{baby}・大人1名 +{adult}）", sibling753:"七五三 きょうだいプラン（+{price}）",
+    nihongami:"日本髪（+{price}）", hairChange:"ヘアチェンジ（+{price}）", westernAddOn:"洋装追加オプション（{price}〜）",
+    planTaxNote:"（税込・目安）", shootTime:"撮影時間", stayTime:"店舗滞在時間",
+    breakdownTitle:"料金内訳（選択内容つき）", breakdownBase:"プラン料金", breakdownGenre:"ジャンル別加算", breakdownCostume:"衣装（主役）",
     breakdownFamily:"ご家族の衣装", breakdownSameDay:"データ納品（即日）", breakdownRush:"データ納品（翌営業日）",
-    breakdownLocation:"ロケ撮影", breakdownSibling:"七五三 きょうだいプラン",
-    breakdownVisit753:"七五三 お参りレンタル", breakdownVisitOmiya:"お宮参り 産着レンタル",
+    breakdownLocation:"ロケ撮影", breakdownSibling:"七五三 きょうだいプラン", breakdownVisit753:"七五三 お参りレンタル", breakdownVisitOmiya:"お宮参り 産着レンタル",
     breakdownMicro:"その他オプション", breakdownPrepared:"仕上がり来店割引",
-    genreDetailLink:"▶︎ このジャンルの詳しいご案内",
-    adminSource:"pricing source: ", estimateNotice:"※ 本ウィジェットの見積りは目安です。詳細はご来店時にご案内します。",
+    genreDetailLink:"▶︎ このジャンルの詳しいご案内", adminSource:"pricing source: ", estimateNotice:"※ 本ウィジェットの見積りは目安です。詳細はご来店時にご案内します。",
   },
 };
-
 const DEFAULT_PRICING_V5: SchemaV5 = {
   schemaVersion: 5,
   colors: { ...DEFAULT_THEME },
@@ -202,13 +139,9 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
   },
   copy: FALLBACK_COPY,
   missingHints: {
-    weekdayWeekend:"平日/土日祝を選択してください。",
-    month:"撮影月を選択してください。",
-    genre:"ジャンルを選択してください。",
-    support:"お支度（仕上がり/着付け＆ヘア/着替えのみ）を選択してください。",
-    costume:"主役の衣装（持ち込み／店内／提携）を選択してください。",
-    partnerCategory:"提携衣装のジャンルを選んでください。",
-    partnerRank:"提携衣装のランクを選んでください。",
+    weekdayWeekend:"平日/土日祝を選択してください。", month:"撮影月を選択してください。", genre:"ジャンルを選択してください。",
+    support:"お支度（仕上がり/着付け＆ヘア/着替えのみ）を選択してください。", costume:"主役の衣装（持ち込み／店内／提携）を選択してください。",
+    partnerCategory:"提携衣装のジャンルを選んでください。", partnerRank:"提携衣装のランクを選んでください。",
   },
   calcRules: {
     featureRules: { westernAddOnEligibleGenres: ["omiya","753-3","753-5","753-7"] },
@@ -253,12 +186,9 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
     { key:"legacy.diamond", name:"レガシー｜ダイヤモンド", badge:"21,554円お得・豪華特典！", note:"Mパネル+Mブック14P+ミニブック2冊+ダイヤモンド特典／15%OFF" },
   ],
   durations: {
-    ateOne:{ shoot:"20分", stay:"約60分" },
-    ateCollection:{ shoot:"30分", stay:"約60分" },
-    "legacy.bronze":{ shoot:"45–60分", stay:"約120–180分" },
-    "legacy.silver":{ shoot:"45–60分", stay:"約120–180分" },
-    "legacy.gold":{ shoot:"45–60分", stay:"約120–180分" },
-    "legacy.platinum":{ shoot:"45–60分", stay:"約120–180分" },
+    ateOne:{ shoot:"20分", stay:"約60分" }, ateCollection:{ shoot:"30分", stay:"約60分" },
+    "legacy.bronze":{ shoot:"45–60分", stay:"約120–180分" }, "legacy.silver":{ shoot:"45–60分", stay:"約120–180分" },
+    "legacy.gold":{ shoot:"45–60分", stay:"約120–180分" }, "legacy.platinum":{ shoot:"45–60分", stay:"約120–180分" },
     "legacy.diamond":{ shoot:"45–60分", stay:"約120–180分" },
   },
   genreAddons: {
@@ -287,13 +217,9 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
       rentalCategoryByGenre:{
         omiya:["omiya_ubugi","adult_female_homon","adult_male_ensemble","adult_female_kurotome"],
         family:["adult_female_homon","adult_male_ensemble","adult_female_kurotome"],
-        "753-3":["753_3_hifu"],
-        "753-5":["753_5_hakama","753_5_shoken_hakama"],
-        "753-7":["753_7_yotsumi"],
-        "half-girl":["half_furisode_hakama"],
-        "half-boy":["half_furisode_hakama"],
-        "adult-female":["seijin_female_furisode"],
-        "adult-male":["seijin_male_hakama"],
+        "753-3":["753_3_hifu"], "753-5":["753_5_hakama","753_5_shoken_hakama"], "753-7":["753_7_yotsumi"],
+        "half-girl":["half_furisode_hakama"], "half-boy":["half_furisode_hakama"],
+        "adult-female":["seijin_female_furisode"], "adult-male":["seijin_male_hakama"],
       },
       categoryDisplayNames:{
         omiya_ubugi:"お宮参り（産着）", adult_female_homon:"大人女性（訪問着・付下げ）", adult_male_ensemble:"大人男性（アンサンブル）",
@@ -318,33 +244,23 @@ const DEFAULT_PRICING_V5: SchemaV5 = {
       },
     },
   },
-  lpLinks: {},
-  images: {},
-  wedding: { enabled:true, expectedPhotos:30, minutesPerPhoto:8, costPerMinute:150, contentsExpectedCounts:{ panelS:2, panelM:3, bookM10:20 } },
-  genrePlanOverrides: {},
-  reserveUrl:"https://studio-ate.jp/reserve",
-  lineUrl:"https://lin.ee/0gs9tlY",
+  lpLinks: {}, images: {}, wedding: { enabled:true, expectedPhotos:30, minutesPerPhoto:8, costPerMinute:150, contentsExpectedCounts:{ panelS:2, panelM:3, bookM10:20 } },
+  genrePlanOverrides: {}, reserveUrl:"https://studio-ate.jp/reserve", lineUrl:"https://lin.ee/0gs9tlY",
 };
 
-/* ========== JSON ロード（SSR安全） ========== */
+/* ========== JSON ロード ========== */
 async function loadPricingJSON(signal: AbortSignal): Promise<SchemaV5> {
   try {
-    // ここが重要：デフォルトは V5 JSON
-    let url = "/ate-pricingV5.json";
-
-    // ?pricing= で上書きできる（例：/?pricing=/alt.json や /?pricing=https://...）
+    let url = "/ate-pricingV5.json"; // public 配下
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search).get("pricing");
       if (p) url = p;
       console.log("[pricing] fetch URL:", url);
     }
-
     const res = await fetch(url, { signal, cache: "no-store" });
     if (!res.ok) throw new Error("fetch failed: " + res.status);
     const data = await res.json();
-    if (!data || typeof data !== "object" || Object.keys(data).length === 0) {
-      throw new Error("invalid/empty json");
-    }
+    if (!data || typeof data !== "object" || Object.keys(data).length === 0) throw new Error("invalid/empty json");
     return data;
   } catch (e) {
     console.warn("[pricing] fallback to DEFAULT_PRICING_V5", e);
@@ -482,8 +398,6 @@ export default function EstimatorV5() {
     return Object.keys(record);
   };
 
-  const familyMap = pricing?.costumes?.partner?.familyGenderCategoryMap || { female:["adult_female_homon","adult_female_kurotome"], male:["adult_male_ensemble"] };
-
   const touch = () => { if (estimated) setEstimated(false); if (validationMsg) setValidationMsg(""); };
 
   const validateBeforeEstimate = () => {
@@ -498,7 +412,7 @@ export default function EstimatorV5() {
 
   /* ========== Part 5: 計算ロジック本体 ========== */
 
-  // 1) プラン基礎料金（Newbornなどのジャンル別上書き対応）
+  // 1) プラン基礎料金
   function getBaseFee(planKey:string): number {
     const ovr = pricing?.genrePlanOverrides?.[genre]?.planOverrides || {};
     const metaOverride = ovr[planKey];
@@ -512,7 +426,7 @@ export default function EstimatorV5() {
     return 0;
   }
 
-  // 2) ジャンル加算（supportに応じて A/B/C の列を使う）
+  // 2) ジャンル加算
   function getGenreAddon(genreKey:string, supportKey:"A"|"B"|"C"): number {
     const row = pricing.genreAddons[genreKey];
     if (!row) return 0;
@@ -520,7 +434,7 @@ export default function EstimatorV5() {
     return typeof val === "number" ? val : 0;
   }
 
-  // 3) 主役衣装コスト（bring/inStore/partner）
+  // 3) 主役衣装コスト
   function getMainCostumeCost(): number {
     if (costume === "bring") return pricing.costumes.bring.price || 0;
     if (costume === "inStore") return pricing.costumes.inStore.price || 0;
@@ -531,17 +445,15 @@ export default function EstimatorV5() {
     return 0;
   }
 
-  // 4) 家族衣装コスト（着付け + 提携レンタル）
+  // 4) 家族衣装コスト
   function getFamilyCostTotal(): { total:number; by:any[] } {
     const items:any[] = [];
     const table = pricing.costumes.partner.rentalPrices || {};
     let sum = 0;
     for (const f of familyOutfits) {
       let line = 0;
-      // dressing
       const dressPrice = f.dressing === "dressHair" ? pricing.adultDressing.dressHair : pricing.adultDressing.dressOnly;
       line += dressPrice;
-      // source
       if (f.source === "partner" && f.category && f.rank) {
         const rental = table?.[f.category]?.[f.rank] || 0;
         line += rental;
@@ -555,7 +467,7 @@ export default function EstimatorV5() {
     return { total: sum, by: items };
   }
 
-  // 5) 即日/翌営業日
+  // 5) データ納品
   function getDeliveryCost(): { sameDay:number; rush:number } {
     return {
       sameDay: sameDayData && sameDayAllowed ? (pricing.delivery.sameDayPrice||0) : 0,
@@ -563,84 +475,45 @@ export default function EstimatorV5() {
     };
   }
 
-  // 6) アドオン系
+  // 6) アドオン（誤記排除の最終版）
   function getAddonsCost(): { total:number; items:any[] } {
     const items:any[] = [];
     let sum = 0;
+
     if (locationAddOn) { items.push({ label: CP.labels.breakdownLocation, amount: pricing.addOns.location }); sum += pricing.addOns.location; }
-    if (sibling753 && (genre.startsWith("753"))) { items.push({ label: CP.labels.breakdownSibling, amount: pricing.addOns.sibling753 }); sum += pricing.addOns.sibling753; }
+    if (sibling753 && genre.startsWith("753")) { items.push({ label: CP.labels.breakdownSibling, amount: pricing.addOns.sibling753 }); sum += pricing.addOns.sibling753; }
+
     if (visitRental) {
+      // 七五三の当日お参りレンタル
+      if (genre.startsWith("753")) {
+        items.push({ label: CP.labels.breakdownVisit753, amount: pricing.addOns.visitRental753 });
+        sum += pricing.addOns.visitRental753;
+      }
+      // お宮参り（提携衣装レンタル時のみ）
       if (genre === "omiya" && costume === "partner") {
-        const baby = pricing.addOns.omiy aVisitRentalBaby; // typo防止
+        const baby = pricing.addOns.omiyaVisitRentalBaby;
+        const adult = pricing.addOns.omiyaVisitRentalAdult;
+        items.push({
+          label: CP.labels.breakdownVisitOmiya
+            .replace("{baby}", currency(baby))
+            .replace("{adult}", currency(adult)),
+          amount: baby + adult,
+        });
+        sum += baby + adult;
       }
     }
-    // visitRental（要件：お宮参り時に提携衣装レンタルが条件）
-    if (visitRental && genre === "omiya" && costume === "partner") {
-      const baby = pricing.addOns.omiy aVisitRentalBaby; // ←スペース混入を修正
-    }
-    // ↑誤記回避のために書き直し
-    if (visitRental) {
-      if (genre === "753-3" || genre === "753-5" || genre === "753-7") {
-        items.push({ label: CP.labels.breakdownVisit753, amount: pricing.addOns.visitRental753 }); sum += pricing.addOns.visitRental753;
-      }
-      if (genre === "omiya" && costume === "partner") {
-        const b = pricing.addOns.omiy aVisitRentalBaby; // ← ここも修正
-      }
-    }
-    // 正しく再定義（上の誤記を実質無効化）
-    if (visitRental) {
-      if (genre === "753-3" || genre === "753-5" || genre === "753-7") {
-        // already added
-      } else if (genre === "omiya" && costume === "partner") {
-        const baby = pricing.addOns.omiy aVisitRentalBaby; // ← さらに修正… すみません、分かりやすく下で再実装します
-      }
-    }
-    // === 最終版（シンプルに再実装） ===
-    const items2:any[] = [];
-    let sum2 = 0;
-    for (const it of items) { items2.push(it); sum2 += it.amount; }
-    // お宮参り Visit（産着/大人）
-    if (visitRental && genre === "omiya" && costume === "partner") {
-      const baby = pricing.addOns.omiy aVisitRentalBaby; // ← この誤記を完全に排除
-    }
-    // 本当にわかりやすく書き直します
-    // （上のごちゃつきを無視して、ここからが実際の計算に使われる値）
-    const itemsFinal:any[] = [];
-    let sumFinal = 0;
-    if (locationAddOn) { itemsFinal.push({ label: CP.labels.breakdownLocation, amount: pricing.addOns.location }); sumFinal += pricing.addOns.location; }
-    if (sibling753 && (genre.startsWith("753"))) { itemsFinal.push({ label: CP.labels.breakdownSibling, amount: pricing.addOns.sibling753 }); sumFinal += pricing.addOns.sibling753; }
-    if (visitRental) {
-      if (genre === "753-3" || genre === "753-5" || genre === "753-7") {
-        itemsFinal.push({ label: CP.labels.breakdownVisit753, amount: pricing.addOns.visitRental753 });
-        sumFinal += pricing.addOns.visitRental753;
-      }
-      if (genre === "omiya" && costume === "partner") {
-        itemsFinal.push({ label: "産着レンタル", amount: pricing.addOns.omiy aVisitRentalBaby }); // ← また誤記
-      }
-    }
-    // 何度も誤記が混じってしまうので、最終の最終を超シンプルに定義
-    const _items:any[] = [];
-    let _sum = 0;
-    if (locationAddOn) { _items.push({ label: CP.labels.breakdownLocation, amount: pricing.addOns.location }); _sum += pricing.addOns.location; }
-    if (sibling753 && genre.startsWith("753")) { _items.push({ label: CP.labels.breakdownSibling, amount: pricing.addOns.sibling753 }); _sum += pricing.addOns.sibling753; }
-    if (visitRental) {
-      if (genre.startsWith("753")) { _items.push({ label: CP.labels.breakdownVisit753, amount: pricing.addOns.visitRental753 }); _sum += pricing.addOns.visitRental753; }
-      if (genre === "omiya" && costume === "partner") {
-        _items.push({ label: CP.labels.breakdownVisitOmiya.replace("{baby}", currency(pricing.addOns.omiy aVisitRentalBaby)).replace("{adult}", currency(pricing.addOns.omiy aVisitRentalAdult)), amount: (pricing.addOns.omiy aVisitRentalBaby + pricing.addOns.omiy aVisitRentalAdult) });
-        _sum += (pricing.addOns.omiy aVisitRentalBaby + pricing.addOns.omiy aVisitRentalAdult);
-      }
-    }
+
     // micro
-    if (optNihongami) { _items.push({ label: CP.labels.nihongami, amount: pricing.addOns.nihongami }); _sum += pricing.addOns.nihongami; }
-    if (optHairChange) { _items.push({ label: CP.labels.hairChange, amount: pricing.addOns.hairChange }); _sum += pricing.addOns.hairChange; }
+    if (optNihongami) { items.push({ label: CP.labels.nihongami, amount: pricing.addOns.nihongami }); sum += pricing.addOns.nihongami; }
+    if (optHairChange) { items.push({ label: CP.labels.hairChange, amount: pricing.addOns.hairChange }); sum += pricing.addOns.hairChange; }
     if (optWesternWear && pricing.calcRules.featureRules.westernAddOnEligibleGenres.includes(genre)) {
-      _items.push({ label: CP.labels.westernAddOn.replace("{price}", currency(pricing.addOns.westernAddOnFrom)), amount: pricing.addOns.westernAddOnFrom });
-      _sum += pricing.addOns.westernAddOnFrom;
+      items.push({ label: CP.labels.westernAddOn.replace("{price}", currency(pricing.addOns.westernAddOnFrom)), amount: pricing.addOns.westernAddOnFrom });
+      sum += pricing.addOns.westernAddOnFrom;
     }
-    return { total: _sum, items: _items };
+    return { total: sum, items };
   }
 
-  // 7) 仕上がり来店割引（support A）※お宮参りは除外
+  // 7) 仕上がり来店割引
   function getPreparedDiscount(): number {
     if (!pricing.calcRules.preparedArrival?.enabled) return 0;
     if (support !== "A") return 0;
@@ -664,43 +537,16 @@ export default function EstimatorV5() {
   // 9) プラン合計
   function computePlan(planKey:string) {
     const breakdown:any[] = [];
-    // base
-    const base = getBaseFee(planKey);
-    breakdown.push({ label: CP.labels.breakdownBase, amount: base });
-
-    // genre addon
-    const add = getGenreAddon(genre, support);
-    if (add) breakdown.push({ label: CP.labels.breakdownGenre, amount: add });
-
-    // main costume
-    const costumeCost = getMainCostumeCost();
-    if (costumeCost) breakdown.push({ label: CP.labels.breakdownCostume, amount: costumeCost });
-
-    // family
-    const fam = getFamilyCostTotal();
-    if (fam.total) { breakdown.push({ label: CP.labels.breakdownFamily, amount: fam.total, children: fam.by }); }
-
-    // delivery
-    const d = getDeliveryCost();
-    if (d.sameDay) breakdown.push({ label: CP.labels.breakdownSameDay, amount: d.sameDay });
-    if (d.rush) breakdown.push({ label: CP.labels.breakdownRush, amount: d.rush });
-
-    // addons
-    const ad = getAddonsCost();
-    if (ad.total) breakdown.push({ label: CP.labels.breakdownMicro, amount: ad.total, children: ad.items });
-
-    // wedding
-    const wed = getWeddingSurcharge();
-    if (wed) breakdown.push({ label: "ウェディングレタッチ作業", amount: wed });
-
-    // prepared discount
-    const disc = getPreparedDiscount();
-    if (disc) breakdown.push({ label: CP.labels.breakdownPrepared, amount: -Math.abs(disc) });
-
-    // total
+    const base = getBaseFee(planKey); breakdown.push({ label: CP.labels.breakdownBase, amount: base });
+    const add = getGenreAddon(genre, support); if (add) breakdown.push({ label: CP.labels.breakdownGenre, amount: add });
+    const costumeCost = getMainCostumeCost(); if (costumeCost) breakdown.push({ label: CP.labels.breakdownCostume, amount: costumeCost });
+    const fam = getFamilyCostTotal(); if (fam.total) breakdown.push({ label: CP.labels.breakdownFamily, amount: fam.total, children: fam.by });
+    const d = getDeliveryCost(); if (d.sameDay) breakdown.push({ label: CP.labels.breakdownSameDay, amount: d.sameDay }); if (d.rush) breakdown.push({ label: CP.labels.breakdownRush, amount: d.rush });
+    const ad = getAddonsCost(); if (ad.total) breakdown.push({ label: CP.labels.breakdownMicro, amount: ad.total, children: ad.items });
+    const wed = getWeddingSurcharge(); if (wed) breakdown.push({ label: "ウェディングレタッチ作業", amount: wed });
+    const disc = getPreparedDiscount(); if (disc) breakdown.push({ label: CP.labels.breakdownPrepared, amount: -Math.abs(disc) });
     let total = breakdown.reduce((s, r) => s + (r.amount || 0), 0);
     if (total < (pricing.calcRules.minTotal || 0)) total = pricing.calcRules.minTotal;
-
     return { total, breakdown };
   }
 
@@ -727,10 +573,7 @@ export default function EstimatorV5() {
           <div>
             <label className="block text-sm mb-1" style={{ color: mutedColor }}>撮影月</label>
             <select className="w-full rounded-xl border p-2" style={{ borderColor: colors.border }} value={month} onChange={(e)=>{ setMonth(e.target.value); touch(); }}>
-              {Array.from({ length: 12 }).map((_, i) => {
-                const m = String(i + 1);
-                return <option key={m} value={m}>{m}月</option>;
-              })}
+              {Array.from({ length: 12 }).map((_, i) => { const m = String(i + 1); return <option key={m} value={m}>{m}月</option>; })}
             </select>
           </div>
           <div className="md:col-span-2">
@@ -870,7 +713,7 @@ export default function EstimatorV5() {
         {!estimated && <span className="text-sm" style={{ color: mutedColor }}>※ いずれかの項目を操作すると表示は「——」に戻ります</span>}
       </div>
 
-      {/* 結果表示（計算済） */}
+      {/* 結果表示 */}
       <div className="mt-6 p-4 rounded-2xl border" style={{ borderColor: colors.border, background: "#fff" }}>
         <h3 className="font-semibold text-lg">
           {CP.titles.simHeading} <span className="text-sm" style={{ color: mutedColor }}>{CP.labels.planTaxNote}</span>
@@ -892,7 +735,6 @@ export default function EstimatorV5() {
                   {CP.labels.shootTime}: {pricing.durations[p.key]?.shoot || "-"} ／ {CP.labels.stayTime}: {pricing.durations[p.key]?.stay || "-"}
                 </div>
 
-                {/* breakdown */}
                 {estimated && (
                   <div className="mt-3">
                     <button onClick={()=>toggleBreakdown(p.key)} className="text-sm underline" type="button">
