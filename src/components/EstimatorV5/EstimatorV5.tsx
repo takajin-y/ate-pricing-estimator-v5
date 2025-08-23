@@ -475,43 +475,63 @@ export default function EstimatorV5() {
     };
   }
 
-  // 6) アドオン（誤記排除の最終版）
-  function getAddonsCost(): { total:number; items:any[] } {
-    const items:any[] = [];
-    let sum = 0;
+ // 6) アドオン系（完全差し替え版）
+function getAddonsCost(): { total: number; items: any[] } {
+  const items: any[] = [];
+  let sum = 0;
 
-    if (locationAddOn) { items.push({ label: CP.labels.breakdownLocation, amount: pricing.addOns.location }); sum += pricing.addOns.location; }
-    if (sibling753 && genre.startsWith("753")) { items.push({ label: CP.labels.breakdownSibling, amount: pricing.addOns.sibling753 }); sum += pricing.addOns.sibling753; }
-
-    if (visitRental) {
-      // 七五三の当日お参りレンタル
-      if (genre.startsWith("753")) {
-        items.push({ label: CP.labels.breakdownVisit753, amount: pricing.addOns.visitRental753 });
-        sum += pricing.addOns.visitRental753;
-      }
-      // お宮参り（提携衣装レンタル時のみ）
-      if (genre === "omiya" && costume === "partner") {
-        const baby = pricing.addOns.omiyaVisitRentalBaby;
-        const adult = pricing.addOns.omiyaVisitRentalAdult;
-        items.push({
-          label: CP.labels.breakdownVisitOmiya
-            .replace("{baby}", currency(baby))
-            .replace("{adult}", currency(adult)),
-          amount: baby + adult,
-        });
-        sum += baby + adult;
-      }
-    }
-
-    // micro
-    if (optNihongami) { items.push({ label: CP.labels.nihongami, amount: pricing.addOns.nihongami }); sum += pricing.addOns.nihongami; }
-    if (optHairChange) { items.push({ label: CP.labels.hairChange, amount: pricing.addOns.hairChange }); sum += pricing.addOns.hairChange; }
-    if (optWesternWear && pricing.calcRules.featureRules.westernAddOnEligibleGenres.includes(genre)) {
-      items.push({ label: CP.labels.westernAddOn.replace("{price}", currency(pricing.addOns.westernAddOnFrom)), amount: pricing.addOns.westernAddOnFrom });
-      sum += pricing.addOns.westernAddOnFrom;
-    }
-    return { total: sum, items };
+  // ロケ
+  if (locationAddOn) {
+    items.push({ label: CP.labels.breakdownLocation, amount: pricing.addOns.location });
+    sum += pricing.addOns.location;
   }
+
+  // きょうだい七五三（ジャンルが753系のときのみ）
+  if (sibling753 && genre.startsWith("753")) {
+    items.push({ label: CP.labels.breakdownSibling, amount: pricing.addOns.sibling753 });
+    sum += pricing.addOns.sibling753;
+  }
+
+  // お参りレンタル
+  if (visitRental) {
+    // 七五三(当日お参りお出かけ)
+    if (genre.startsWith("753")) {
+      items.push({ label: CP.labels.breakdownVisit753, amount: pricing.addOns.visitRental753 });
+      sum += pricing.addOns.visitRental753;
+    }
+    // お宮参り（提携衣装レンタル時のみ）
+    if (genre === "omiya" && costume === "partner") {
+      const baby = pricing.addOns.omiyaVisitRentalBaby;
+      const adult = pricing.addOns.omiyaVisitRentalAdult;
+      items.push({
+        label: CP.labels.breakdownVisitOmiya
+          .replace("{baby}", currency(baby))
+          .replace("{adult}", currency(adult)),
+        amount: baby + adult,
+      });
+      sum += baby + adult;
+    }
+  }
+
+  // micro
+  if (optNihongami) {
+    items.push({ label: CP.labels.nihongami, amount: pricing.addOns.nihongami });
+    sum += pricing.addOns.nihongami;
+  }
+  if (optHairChange) {
+    items.push({ label: CP.labels.hairChange, amount: pricing.addOns.hairChange });
+    sum += pricing.addOns.hairChange;
+  }
+  if (optWesternWear && pricing.calcRules.featureRules.westernAddOnEligibleGenres.includes(genre)) {
+    items.push({
+      label: CP.labels.westernAddOn.replace("{price}", currency(pricing.addOns.westernAddOnFrom)),
+      amount: pricing.addOns.westernAddOnFrom,
+    });
+    sum += pricing.addOns.westernAddOnFrom;
+  }
+
+  return { total: sum, items };
+}
 
   // 7) 仕上がり来店割引
   function getPreparedDiscount(): number {
