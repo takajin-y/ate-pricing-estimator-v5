@@ -13,9 +13,10 @@
     "isolatedModules": true,
     "jsx": "preserve",
 
-    // ← src 配下にしているので baseUrl は "src"
     "baseUrl": "src",
-    "paths": { "@/*": ["*"] }
+    "paths": {
+      "@/*": ["*"]
+    }
   },
   "include": ["next-env.d.ts", "src/**/*"],
   "exclude": ["node_modules"]
